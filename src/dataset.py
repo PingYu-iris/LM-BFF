@@ -276,6 +276,8 @@ class FewShotDataset(torch.utils.data.Dataset):
         self.label_list = self.processor.get_labels()
         self.num_labels = len(self.label_list)
         if args.prompt:
+            if args.mapping == None:
+                args.mapping = "{'0':'terrible','1':'great'}"
             assert args.mapping is not None
             self.label_to_word = eval(args.mapping)
 

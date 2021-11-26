@@ -16,7 +16,7 @@ from transformers import GlueDataTrainingArguments as DataTrainingArguments
 from transformers import HfArgumentParser, TrainingArguments, set_seed
 
 from src.dataset import FewShotDataset
-from src.models import BertForPromptFinetuning, RobertaForPromptFinetuning, resize_token_type_embeddings
+from src.models import BertForPromptFinetuning, RobertaForPromptFinetuning, resize_token_type_embeddings, RobertaForPromptTuning
 from src.trainer import Trainer
 from src.processors import processors_mapping, num_labels_mapping, output_modes_mapping, compute_metrics_mapping, bound_mapping
 
@@ -74,6 +74,11 @@ class DynamicDataTrainingArguments(DataTrainingArguments):
 
     num_sample: Optional[int] = field(
         default=16,
+        metadata={"help": "Number of samples (for inference) in fine-tuning with demonstrations"}
+    )
+
+    soft_prompt_tokens: Optional[int] = field(
+        default=20,
         metadata={"help": "Number of samples (for inference) in fine-tuning with demonstrations"}
     )
 
@@ -432,7 +437,7 @@ def main():
         cache_dir=model_args.cache_dir,
     )
 
-    if 'prompt' in model_args.few_shot_type:
+    if model_args.few_shot_type == 'prompt' or model_args.few_shot_type == "prompt-demo":
         if config.model_type == 'roberta':
             model_fn = RobertaForPromptFinetuning
         elif config.model_type == 'bert':
@@ -441,6 +446,8 @@ def main():
             raise NotImplementedError
     elif model_args.few_shot_type == 'finetune':
         model_fn = AutoModelForSequenceClassification
+    elif model_args.few_shot_type == 'prompt-tuning':
+        model_fn = RobertaForPromptTuning
     else:
         raise NotImplementedError
     special_tokens = []
@@ -469,12 +476,21 @@ def main():
 
     set_seed(training_args.seed)
 
-    model = model_fn.from_pretrained(
-        model_args.model_name_or_path,
-        from_tf=bool(".ckpt" in model_args.model_name_or_path),
-        config=config,
-        cache_dir=model_args.cache_dir,
-    )
+    if model_args.few_shot_type == 'prompt-tuning':
+        model = model_fn.from_pretrained(
+            model_args.model_name_or_path,
+            from_tf=bool(".ckpt" in model_args.model_name_or_path),
+            config=config,
+            cache_dir=model_args.cache_dir,
+            n_tokens=data_args.soft_prompt_tokens
+        )
+    else:
+        model = model_fn.from_pretrained(
+            model_args.model_name_or_path,
+            from_tf=bool(".ckpt" in model_args.model_name_or_path),
+            config=config,
+            cache_dir=model_args.cache_dir,
+        )
 
     # For BERT, increase the size of the segment (token type) embeddings
     if config.model_type == 'bert':
@@ -490,6 +506,8 @@ def main():
     model.model_args = model_args
     model.data_args = data_args
     model.tokenizer = tokenizer
+    if model_args.few_shot_type == 'prompt-tuning':
+        model.soft_prompt_tokens = data_args.soft_prompt_tokens
 
     # Build metric
     def build_compute_metrics_fn(task_name: str) -> Callable[[EvalPrediction], Dict]:
@@ -517,6 +535,14 @@ def main():
 
         return compute_metrics_fn
     
+    # check trainable parameters
+    logger.info("*** Check Param ***")
+    model_parameters_train = filter(lambda p: p.requires_grad, model.parameters())
+    params_train = sum([np.prod(p.size()) for p in model_parameters_train])
+    params = sum([np.prod(p.size()) for p in model.parameters()])
+    logger.info("Trainable parameters: %f" % (params_train))
+    logger.info("Total parameters: %f" % (params))
+
     # Initialize our Trainer
     trainer = Trainer(
         model=model,
@@ -531,7 +557,8 @@ def main():
         trainer.train(model_path=model_args.model_name_or_path if os.path.isdir(model_args.model_name_or_path) else None)
         # Use the early stop, so do not save the model in the end (unless specify save_at_last)
         if training_args.save_at_last:
-            trainer.save_model(training_args.output_dir)
+            # trainer.save_model(training_args.output_dir)
+            torch.save(model,training_args.output_dir+'/model.pt')
  
         if trainer.is_world_master():
             tokenizer.save_pretrained(training_args.output_dir)
@@ -539,7 +566,11 @@ def main():
             torch.save(data_args, os.path.join(training_args.output_dir, "data_args.bin"))
         
         # Reload the best checkpoint (for eval)
-        model = model_fn.from_pretrained(training_args.output_dir)
+        # if model_args.few_shot_type == 'prompt-tuning':
+        #     model_new = model_fn.from_pretrained(training_args.output_dir,n_tokens=data_args.soft_prompt_tokens)
+        # else:
+        #     model_new = model_fn.from_pretrained(training_args.output_dir)
+        model = torch.load(training_args.output_dir+'/model.pt')
         model = model.to(training_args.device)
         trainer.model = model
         if data_args.prompt:

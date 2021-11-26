@@ -408,10 +408,12 @@ class Trainer(transformers.Trainer):
                         output = self.evaluate()
                         metrics = output.metrics
                         objective = self.dev_objective(metrics)
+                        logger.info("current dev result: {}".format(objective))
                         if objective > self.objective:
                             logger.info("Best dev result: {}".format(objective))
                             self.objective = objective
-                            self.save_model(self.args.output_dir) 
+                            torch.save(model.module,self.args.output_dir+'/model.pt')
+                            # self.save_model(self.args.output_dir) 
 
                     # ----------------------------------------------------------------------
                     # END CHANGES.
