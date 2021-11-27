@@ -16,7 +16,7 @@ from transformers import GlueDataTrainingArguments as DataTrainingArguments
 from transformers import HfArgumentParser, TrainingArguments, set_seed
 
 from src.dataset import FewShotDataset
-from src.models import BertForPromptFinetuning, RobertaForPromptFinetuning, resize_token_type_embeddings, RobertaForPromptTuning
+from src.models import BertForPromptFinetuning, RobertaForPromptFinetuning, resize_token_type_embeddings
 from src.trainer import Trainer
 from src.processors import processors_mapping, num_labels_mapping, output_modes_mapping, compute_metrics_mapping, bound_mapping
 
@@ -26,6 +26,11 @@ from datetime import datetime
 from copy import deepcopy
 from tqdm import tqdm
 import json
+
+'''our implementations'''
+from src.models_prompt import RobertaForPromptTuning
+from src.models_prefix_tuning import RobertaForPrefixTuning
+
 
 logger = logging.getLogger(__name__)
 
@@ -446,8 +451,10 @@ def main():
             raise NotImplementedError
     elif model_args.few_shot_type == 'finetune':
         model_fn = AutoModelForSequenceClassification
-    elif model_args.few_shot_type == 'prompt-tuning':
+    elif 'prompt-tuning' in model_args.few_shot_type:
         model_fn = RobertaForPromptTuning
+    elif "prefix-tuning" in model_args.few_shot_type:
+        model_fn = RobertaForPrefixTuning
     else:
         raise NotImplementedError
     special_tokens = []
@@ -476,7 +483,7 @@ def main():
 
     set_seed(training_args.seed)
 
-    if model_args.few_shot_type == 'prompt-tuning':
+    if 'prompt-tuning' in model_args.few_shot_type or 'prefix-tuning' in model_args.few_shot_type:
         model = model_fn.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -506,7 +513,7 @@ def main():
     model.model_args = model_args
     model.data_args = data_args
     model.tokenizer = tokenizer
-    if model_args.few_shot_type == 'prompt-tuning':
+    if 'prompt-tuning' in model_args.few_shot_type or 'prefix-tuning' in model_args.few_shot_type:
         model.soft_prompt_tokens = data_args.soft_prompt_tokens
 
     # Build metric
