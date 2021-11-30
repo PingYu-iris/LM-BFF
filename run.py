@@ -565,7 +565,7 @@ def main():
         # Use the early stop, so do not save the model in the end (unless specify save_at_last)
         if training_args.save_at_last:
             # trainer.save_model(training_args.output_dir)
-            torch.save(model,training_args.output_dir+'/model.pt')
+            torch.save(model,training_args.output_dir+'/model_last.pt')
  
         if trainer.is_world_master():
             tokenizer.save_pretrained(training_args.output_dir)
@@ -577,7 +577,7 @@ def main():
         #     model_new = model_fn.from_pretrained(training_args.output_dir,n_tokens=data_args.soft_prompt_tokens)
         # else:
         #     model_new = model_fn.from_pretrained(training_args.output_dir)
-        model = torch.load(training_args.output_dir+'/model.pt')
+        model = torch.load(training_args.output_dir+'/model_best.pt')
         model = model.to(training_args.device)
         trainer.model = model
         if data_args.prompt:
@@ -637,7 +637,7 @@ def main():
             )
             if trainer.is_world_master():
                 with open(output_test_file, "w") as writer:
-                    logger.info("***** Test results {} *****".format(test_dataset.args.task_name))
+                    logger.info("***** Test best results {} *****".format(test_dataset.args.task_name))
                     for key, value in test_result.items():
                         logger.info("  %s = %s", key, value)
                         writer.write("%s = %s\n" % (key, value))
@@ -650,6 +650,57 @@ def main():
                     np.save(os.path.join(training_args.save_logit_dir, "{}-{}-{}.npy".format(test_dataset.task_name, training_args.model_id, training_args.array_id)), logits)
 
             test_results.update(test_result)
+
+    model = torch.load(training_args.output_dir+'/model_last.pt')
+    model = model.to(training_args.device)
+    trainer.model = model
+    if data_args.prompt:
+        model.label_word_list = torch.tensor(train_dataset.label_word_list).long().cuda()
+    if output_modes_mapping[data_args.task_name] == 'regression':
+        # lower / upper bounds
+        model.lb, model.ub = bound_mapping[data_args.task_name]
+    model.model_args = model_args
+    model.data_args = data_args
+    model.tokenizer = tokenizer
+
+    test_results = {}
+    if training_args.do_predict:
+        logging.info("*** Test ***")
+        test_datasets = [test_dataset]
+        if data_args.task_name == "mnli":
+            mnli_mm_data_args = dataclasses.replace(data_args, task_name="mnli-mm")
+            test_datasets.append(
+                FewShotDataset(mnli_mm_data_args, tokenizer=tokenizer, mode="test", use_demo=('demo' in model_args.few_shot_type))
+            )
+
+        for test_dataset in test_datasets:
+            trainer.compute_metrics = build_compute_metrics_fn(test_dataset.args.task_name)
+            output = trainer.evaluate(eval_dataset=test_dataset)
+            test_result = output.metrics
+
+            output_test_file = os.path.join(
+                training_args.output_dir, f"test_results_{test_dataset.args.task_name}.txt"
+            )
+            if trainer.is_world_master():
+                with open(output_test_file, "w") as writer:
+                    logger.info("***** Test last results {} *****".format(test_dataset.args.task_name))
+                    logger.info("***** model_type {} *****".format(model_args.few_shot_type))
+                    logger.info("***** training samples {} *****".format(data_args.num_k))
+                    logger.info("***** soft prompt tokens {} *****".format(data_args.soft_prompt_tokens))
+                    for key, value in test_result.items():
+                        logger.info("  %s = %s", key, value)
+                        writer.write("%s = %s\n" % (key, value))
+                        final_result[test_dataset.args.task_name + '_test_' + key] = value
+
+                if training_args.save_logit:
+                    predictions = output.predictions
+                    num_logits = predictions.shape[-1]
+                    logits = predictions.reshape([test_dataset.num_sample, -1, num_logits]).mean(axis=0)
+                    np.save(os.path.join(training_args.save_logit_dir, "{}-{}-{}.npy".format(test_dataset.task_name, training_args.model_id, training_args.array_id)), logits)
+
+            test_results.update(test_result)
+
+
 
     with FileLock('log.lock'):
         with open('log', 'a') as f:

@@ -101,5 +101,6 @@ python run.py \
     --mapping "{'0':'terrible','1':'great'}" \
     --num_sample 16 \
     --soft_prompt_tokens 20
+    ----save_at_last
     
 ```

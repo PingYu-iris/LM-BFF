@@ -412,7 +412,7 @@ class Trainer(transformers.Trainer):
                         if objective > self.objective:
                             logger.info("Best dev result: {}".format(objective))
                             self.objective = objective
-                            torch.save(model.module,self.args.output_dir+'/model.pt')
+                            torch.save(model.module,self.args.output_dir+'/model_best.pt')
                             # self.save_model(self.args.output_dir) 
 
                     # ----------------------------------------------------------------------

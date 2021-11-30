@@ -8,10 +8,10 @@
 # MODEL: pre-trained model name (roberta-*, bert-*), see Transformers model list
 
 # Number of training instances per label
-K=16
+# K=16
 
 # Training steps
-MAX_STEP=1000
+# MAX_STEP=1000
 
 # Validation steps
 EVAL_STEP=100
@@ -132,8 +132,10 @@ python run.py \
   --tag $TAG \
   --template $TEMPLATE \
   --mapping $MAPPING \
+  --soft_prompt_tokens $SOFT_PROMPT_NUM \
+  --save_at_last
   $TASK_EXTRA \
-  $1 
+  $1 > output.txt
 
 # Delete the checkpoint 
 # Since we need to run multiple trials, saving all the checkpoints takes 
