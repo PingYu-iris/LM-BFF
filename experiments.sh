@@ -9,25 +9,28 @@ do
     do
         for lr in 2e-5
         do
-            for k in 1 2 5
+            for k in 3 8 16 64 256
             do
                 for soft_prompt_tokens in 30
                 do
-                    for model_type in finetune prefix-tuning prompt-tuning
+                    for model_type in prefix-tuning-stanford
                     do
                         for max_step in 500
-                        do 
-                            TAG=exp \
-                            TYPE=$model_type \
-                            TASK=sst-5 \
-                            BS=$bs \
-                            LR=$lr \
-                            SEED=$seed \
-                            MODEL=roberta-large \
-                            SOFT_PROMPT_NUM=$soft_prompt_tokens\
-                            K=$k \
-                            MAX_STEP=$max_step \
-                            bash run_experiment.sh
+                        do
+                            for task in SST-2
+                            do
+                                TAG=exp \
+                                TYPE=$model_type \
+                                TASK=$task \
+                                BS=$bs \
+                                LR=$lr \
+                                SEED=$seed \
+                                MODEL=roberta-large \
+                                SOFT_PROMPT_NUM=$soft_prompt_tokens\
+                                K=$k \
+                                MAX_STEP=$max_step \
+                                bash run_experiment.sh
+                            done
                         done
                     done
                 done

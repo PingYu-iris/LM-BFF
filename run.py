@@ -30,6 +30,7 @@ import json
 '''our implementations'''
 from src.models_prompt import RobertaForPromptTuning
 from src.models_prefix_tuning import RobertaForPrefixTuning
+from src.models_prefix_tuning_stanford import RobertaForPrefixTuningSF
 
 
 logger = logging.getLogger(__name__)
@@ -453,6 +454,8 @@ def main():
         model_fn = AutoModelForSequenceClassification
     elif 'prompt-tuning' in model_args.few_shot_type:
         model_fn = RobertaForPromptTuning
+    elif "prefix-tuning-stanford" in model_args.few_shot_type:
+        model_fn = RobertaForPrefixTuningSF
     elif "prefix-tuning" in model_args.few_shot_type:
         model_fn = RobertaForPrefixTuning
     else:
@@ -567,10 +570,10 @@ def main():
             # trainer.save_model(training_args.output_dir)
             torch.save(model,training_args.output_dir+'/model_last.pt')
  
-        if trainer.is_world_master():
-            tokenizer.save_pretrained(training_args.output_dir)
-            torch.save(model_args, os.path.join(training_args.output_dir, "model_args.bin"))
-            torch.save(data_args, os.path.join(training_args.output_dir, "data_args.bin"))
+        # if trainer.is_world_master():
+        tokenizer.save_pretrained(training_args.output_dir)
+        torch.save(model_args, os.path.join(training_args.output_dir, "model_args.bin"))
+        torch.save(data_args, os.path.join(training_args.output_dir, "data_args.bin"))
         
         # Reload the best checkpoint (for eval)
         # if model_args.few_shot_type == 'prompt-tuning':
@@ -608,13 +611,13 @@ def main():
             output_eval_file = os.path.join(
                 training_args.output_dir, f"eval_results_{eval_dataset.args.task_name}.txt"
             )
-            if trainer.is_world_master():
-                with open(output_eval_file, "w") as writer:
-                    logger.info("***** Eval results {} *****".format(eval_dataset.args.task_name))
-                    for key, value in eval_result.items():
-                        logger.info("  %s = %s", key, value)
-                        writer.write("%s = %s\n" % (key, value))
-                        final_result[eval_dataset.args.task_name + '_dev_' + key] = value
+            # if trainer.is_world_master():
+            with open(output_eval_file, "w") as writer:
+                logger.info("***** Eval results {} *****".format(eval_dataset.args.task_name))
+                for key, value in eval_result.items():
+                    logger.info("  %s = %s", key, value)
+                    writer.write("%s = %s\n" % (key, value))
+                    final_result[eval_dataset.args.task_name + '_dev_' + key] = value
             eval_results.update(eval_result)
 
     test_results = {}
@@ -635,19 +638,20 @@ def main():
             output_test_file = os.path.join(
                 training_args.output_dir, f"test_results_{test_dataset.args.task_name}.txt"
             )
-            if trainer.is_world_master():
-                with open(output_test_file, "w") as writer:
-                    logger.info("***** Test best results {} *****".format(test_dataset.args.task_name))
-                    for key, value in test_result.items():
-                        logger.info("  %s = %s", key, value)
-                        writer.write("%s = %s\n" % (key, value))
-                        final_result[test_dataset.args.task_name + '_test_' + key] = value
+            # if trainer.is_world_master():
+            # output_test_file = "output_result.txt"
+            with open(output_test_file, "a") as writer:
+                logger.info("***** Test best results {} *****".format(test_dataset.args.task_name))
+                for key, value in test_result.items():
+                    logger.info("  %s = %s", key, value)
+                    writer.write("%s = %s\n" % (key, value))
+                    final_result[test_dataset.args.task_name + '_test_' + key] = value
 
-                if training_args.save_logit:
-                    predictions = output.predictions
-                    num_logits = predictions.shape[-1]
-                    logits = predictions.reshape([test_dataset.num_sample, -1, num_logits]).mean(axis=0)
-                    np.save(os.path.join(training_args.save_logit_dir, "{}-{}-{}.npy".format(test_dataset.task_name, training_args.model_id, training_args.array_id)), logits)
+            if training_args.save_logit:
+                predictions = output.predictions
+                num_logits = predictions.shape[-1]
+                logits = predictions.reshape([test_dataset.num_sample, -1, num_logits]).mean(axis=0)
+                np.save(os.path.join(training_args.save_logit_dir, "{}-{}-{}.npy".format(test_dataset.task_name, training_args.model_id, training_args.array_id)), logits)
 
             test_results.update(test_result)
 
@@ -681,22 +685,22 @@ def main():
             output_test_file = os.path.join(
                 training_args.output_dir, f"test_results_{test_dataset.args.task_name}.txt"
             )
-            if trainer.is_world_master():
-                with open(output_test_file, "w") as writer:
-                    logger.info("***** Test last results {} *****".format(test_dataset.args.task_name))
-                    logger.info("***** model_type {} *****".format(model_args.few_shot_type))
-                    logger.info("***** training samples {} *****".format(data_args.num_k))
-                    logger.info("***** soft prompt tokens {} *****".format(data_args.soft_prompt_tokens))
-                    for key, value in test_result.items():
-                        logger.info("  %s = %s", key, value)
-                        writer.write("%s = %s\n" % (key, value))
-                        final_result[test_dataset.args.task_name + '_test_' + key] = value
+            # if trainer.is_world_master():
+            with open(output_test_file, "w") as writer:
+                logger.info("***** Test last results {} *****".format(test_dataset.args.task_name))
+                logger.info("***** model_type {} *****".format(model_args.few_shot_type))
+                logger.info("***** training samples {} *****".format(data_args.num_k))
+                logger.info("***** soft prompt tokens {} *****".format(data_args.soft_prompt_tokens))
+                for key, value in test_result.items():
+                    logger.info("  %s = %s", key, value)
+                    writer.write("%s = %s\n" % (key, value))
+                    final_result[test_dataset.args.task_name + '_test_' + key] = value
 
-                if training_args.save_logit:
-                    predictions = output.predictions
-                    num_logits = predictions.shape[-1]
-                    logits = predictions.reshape([test_dataset.num_sample, -1, num_logits]).mean(axis=0)
-                    np.save(os.path.join(training_args.save_logit_dir, "{}-{}-{}.npy".format(test_dataset.task_name, training_args.model_id, training_args.array_id)), logits)
+            if training_args.save_logit:
+                predictions = output.predictions
+                num_logits = predictions.shape[-1]
+                logits = predictions.reshape([test_dataset.num_sample, -1, num_logits]).mean(axis=0)
+                np.save(os.path.join(training_args.save_logit_dir, "{}-{}-{}.npy".format(test_dataset.task_name, training_args.model_id, training_args.array_id)), logits)
 
             test_results.update(test_result)
 

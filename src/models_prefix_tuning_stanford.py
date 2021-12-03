@@ -12,7 +12,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class RobertaForPrefixTuning(BertPreTrainedModel):
+class RobertaForPrefixTuningSF(BertPreTrainedModel):
 
     def __init__(self, config, soft_prompt_path: str = None,
         initialize_from_vocab: bool = True,
@@ -34,75 +34,34 @@ class RobertaForPrefixTuning(BertPreTrainedModel):
         self.initialize_from_vocab=initialize_from_vocab
         self.random_range=random_range
         
-        if soft_prompt_path is not None:
-            self.roberta.set_soft_prompt_embeds(soft_prompt_path)
-        elif self.n_tokens is not None:
-            print("Initializing soft prompt...")
-            self.soft_prompt = self.initialize_soft_prompt(n_tokens=self.n_tokens,
-                initialize_from_vocab=self.initialize_from_vocab,random_range=self.random_range)
+        # if soft_prompt_path is not None:
+        #     self.roberta.set_soft_prompt_embeds(soft_prompt_path)
+        # elif self.n_tokens is not None:
+        #     print("Initializing soft prompt...")
+        #     self.soft_prompt = self.initialize_soft_prompt(n_tokens=self.n_tokens,
+        #         initialize_from_vocab=self.initialize_from_vocab,random_range=self.random_range)
         
         
         self.return_full_softmax = None
         self.model_args = None
         self.data_args = None
         self.label_word_list = None
-    
-    # @classmethod
-    # def from_pretrained(cls, pretrained_model_name_or_path, soft_prompt_path: str = None,
-    #     initialize_from_vocab: bool = True,
-    #     random_range: float = 0.5,
-    #     n_tokens: int = None,*model_args, **kwargs):
+        self.n_layer = config.num_hidden_layers
+        self.mid_dim = 512
 
-    #     model = super().from_pretrained(pretrained_model_name_or_path, *model_args, **kwargs)
+        self.input_tokens = torch.arange(self.n_tokens).long()
+        self.wte = nn.Embedding(self.n_tokens, self.config.hidden_size)
+        self.control_trans = nn.Sequential(
+            nn.Linear(self.config.hidden_size, self.mid_dim),
+            nn.Tanh(),
+            nn.Linear(self.mid_dim, self.n_layer * 2 * self.config.hidden_size))
+        
+        self.match_n_layer = config.num_hidden_layers
+        self.match_n_head = config.num_attention_heads
+        self.match_n_embd = config.hidden_size // config.num_attention_heads
+        self.prefix_dropout = 0.0
+        self.dropout = nn.Dropout(self.prefix_dropout)
 
-    #     for param in model.parameters():
-    #         param.requires_grad = False
-
-    #     if soft_prompt_path is not None:
-    #         model.set_soft_prompt_embeds(soft_prompt_path)
-    #     elif n_tokens is not None:
-    #         print("Initializing soft prompt...")
-    #         model.initialize_soft_prompt(
-    #             n_tokens=n_tokens,
-    #             initialize_from_vocab=initialize_from_vocab,
-    #             random_range=random_range,
-    #         )
-
-    #     return model
-
-
-    def initialize_soft_prompt(
-        self,
-        n_tokens: int = 20,
-        initialize_from_vocab: bool = True,
-        random_range: float = 0.5,
-    ) -> None:
-        self.n_tokens = n_tokens
-        if initialize_from_vocab:
-            init_prompt_value = self.roberta.embeddings.word_embeddings.weight[:n_tokens].clone().detach()
-        else:
-            init_prompt_value = torch.FloatTensor(2, 10).uniform_(
-                -random_range, random_range
-            )
-        soft_prompt = nn.Embedding(n_tokens, self.config.hidden_size)
-        # Initialize weight
-        soft_prompt.weight = nn.parameter.Parameter(init_prompt_value)
-        return soft_prompt
-
-    
-    def set_soft_prompt_embeds(
-        self,
-        soft_prompt_path: str,
-    ) -> None:
-        """
-        Args:
-            soft_prompt_path: torch soft prompt file path
-        """
-        self.soft_prompt = torch.load(
-            soft_prompt_path, map_location=torch.device("cpu")
-        )
-        self.n_tokens = self.soft_prompt.num_embeddings
-        print(f"Set soft prompt! (n_tokens: {self.n_tokens})")
 
     def _cat_learned_embedding_to_input(self, input_ids) -> torch.Tensor:
         inputs_embeds = self.roberta.embeddings.word_embeddings(input_ids)
@@ -140,6 +99,17 @@ class RobertaForPrefixTuning(BertPreTrainedModel):
             [torch.full((n_batches, self.n_tokens), 1,dtype=torch.long, device=attention_mask.device), attention_mask],
             dim=1,
         )
+    
+    def get_prompt_p5(self, input_device,control_code=None, gpt2=None, bsz=None):
+        input_tokens = self.input_tokens.unsqueeze(0).expand(bsz, -1).to(input_device)
+        temp_control = self.wte(input_tokens)
+        past_key_values = self.control_trans(temp_control) #bsz, seqlen, layer*emb
+        bsz, seqlen, _ = past_key_values.shape
+        past_key_values = past_key_values.view(bsz, seqlen, self.match_n_layer * 2, self.match_n_head,
+                                               self.match_n_embd)
+        past_key_values = self.dropout(past_key_values)
+        past_key_values = past_key_values.permute([2, 0, 3, 1, 4]).split(2)
+        return past_key_values
         
     def forward(
         self,
@@ -150,24 +120,30 @@ class RobertaForPrefixTuning(BertPreTrainedModel):
     ):
         if mask_pos is not None:
             mask_pos = mask_pos.squeeze()
+        
+        input_device = input_ids.device
+        bz = input_ids.size()[0]
+        past_key_values = self.get_prompt_p5(input_device,bsz=bz)
+
 
         
 
-        if input_ids is not None:
-            inputs_embeds = self._cat_learned_embedding_to_input(input_ids).to(
-                input_ids.device
-            )
+        # if input_ids is not None:
+        #     inputs_embeds = self._cat_learned_embedding_to_input(input_ids).to(
+        #         input_ids.device
+        #     )
 
-        if labels is not None:
-            extend_labels = self._extend_labels(labels).to(self.device)
+        # if labels is not None:
+        #     extend_labels = self._extend_labels(labels).to(self.device)
 
         if attention_mask is not None:
-            attention_mask = self._extend_attention_mask(attention_mask)
+            attention_mask_extend = self._extend_attention_mask(attention_mask)
 
         # Encode everything
         outputs = self.roberta(
-            attention_mask=attention_mask,
-            inputs_embeds = inputs_embeds,
+            input_ids = input_ids,
+            attention_mask=attention_mask_extend,
+            past_key_values = past_key_values
         )
         sequence_output, pooled_output = outputs[:2]
         logits = self.classifier(sequence_output)

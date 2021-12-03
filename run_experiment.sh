@@ -116,7 +116,6 @@ python run.py \
   --do_train \
   --do_eval \
   --do_predict \
-  --evaluate_during_training \
   --model_name_or_path $MODEL \
   --few_shot_type $TYPE \
   --num_k $K \
