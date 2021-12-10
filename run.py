@@ -687,6 +687,8 @@ def main():
                     logger.info("***** model_type {} *****".format(model_args.few_shot_type))
                     logger.info("***** training samples {} *****".format(data_args.num_k))
                     logger.info("***** soft prompt tokens {} *****".format(data_args.soft_prompt_tokens))
+                    logger.info("***** training seed {} *****".format(training_args.seed))
+                    
                     for key, value in test_result.items():
                         logger.info("  %s = %s", key, value)
                         writer.write("%s = %s\n" % (key, value))
