@@ -688,6 +688,7 @@ def main():
             # if trainer.is_world_master():
             with open(output_test_file, "w") as writer:
                 logger.info("***** Test last results {} *****".format(test_dataset.args.task_name))
+                logger.info("***** training seed {} *****".format(training_args.seed))
                 logger.info("***** model_type {} *****".format(model_args.few_shot_type))
                 logger.info("***** training samples {} *****".format(data_args.num_k))
                 logger.info("***** soft prompt tokens {} *****".format(data_args.soft_prompt_tokens))

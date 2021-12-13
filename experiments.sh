@@ -1,19 +1,19 @@
 # seed in 13 21 42 87 100
 # bs in 2 4 8
 # lr in 1e-5 2e-5 5e-5
+# task in SST-2 sst-5 mr cr mpqa trec SNLI QNLI QQP
 
-
-for seed in 42
+for seed in 21
 do
     for bs in 2
     do
         for lr in 2e-5
         do
-            for k in 3 8 16 64 256
+            for k in 2
             do
                 for soft_prompt_tokens in 30
                 do
-                    for model_type in prefix-tuning-stanford
+                    for model_type in prompt-tuning
                     do
                         for max_step in 500
                         do
