@@ -2,21 +2,21 @@
 # bs in 2 4 8
 # lr in 1e-5 2e-5 5e-5
 # task in SST-2 sst-5 mr cr mpqa trec SNLI QNLI QQP 
-# model_type in prompt-tuning prompt prefix-tuning
+# model_type in prompt-tuning prompt prefix-tuning finetune
 
-for seed in 13 21 42 87 100
+for seed in 100
 do
-    for bs in 2
+    for bs in 32
     do
         for lr in 2e-5
         do
-            for k in 5
+            for k in 16
             do
                 for soft_prompt_tokens in 25
                 do
-                    for model_type in prefix-tuning
+                    for model_type in prompt-tuning
                     do
-                        for max_step in 1000
+                        for max_step in 5000
                         do
                             for task in SST-2
                             do 

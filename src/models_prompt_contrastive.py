@@ -80,29 +80,7 @@ class RobertaForPromptTuning(BertPreTrainedModel):
         self.label_word_list = None
         self.positive_ids = None
         self.negative_ids = None
-    
-    # @classmethod
-    # def from_pretrained(cls, pretrained_model_name_or_path, soft_prompt_path: str = None,
-    #     initialize_from_vocab: bool = True,
-    #     random_range: float = 0.5,
-    #     n_tokens: int = None,*model_args, **kwargs):
-
-    #     model = super().from_pretrained(pretrained_model_name_or_path, *model_args, **kwargs)
-
-    #     for param in model.parameters():
-    #         param.requires_grad = False
-
-    #     if soft_prompt_path is not None:
-    #         model.set_soft_prompt_embeds(soft_prompt_path)
-    #     elif n_tokens is not None:
-    #         print("Initializing soft prompt...")
-    #         model.initialize_soft_prompt(
-    #             n_tokens=n_tokens,
-    #             initialize_from_vocab=initialize_from_vocab,
-    #             random_range=random_range,
-    #         )
-
-    #     return model
+        self.contrative_ratio = None
 
 
     def initialize_soft_prompt(
@@ -147,7 +125,8 @@ class RobertaForPromptTuning(BertPreTrainedModel):
         # [batch_size, n_tokens, n_embd]
         learned_embeds = self.soft_prompt.weight.repeat(inputs_embeds.size(0), 1, 1)
 
-        inputs_embeds = torch.cat([learned_embeds, inputs_embeds], dim=1)
+        # inputs_embeds = torch.cat([learned_embeds, inputs_embeds], dim=1)
+        inputs_embeds = torch.cat([inputs_embeds[:,0,:].unsqueeze(1),learned_embeds,inputs_embeds[:,1:,:]],dim=1)
 
         return inputs_embeds
     
@@ -184,9 +163,6 @@ class RobertaForPromptTuning(BertPreTrainedModel):
     ):
         if mask_pos is not None:
             mask_pos = mask_pos.squeeze()
-
-        
-
         if input_ids is not None:
             inputs_embeds = self._cat_learned_embedding_to_input(input_ids).to(
                 input_ids.device
@@ -220,27 +196,6 @@ class RobertaForPromptTuning(BertPreTrainedModel):
         for label_id in range(len(self.label_word_list)):
             logits.append(prediction_mask_scores[:, self.label_word_list[label_id]].unsqueeze(-1))
         logits = torch.cat(logits, -1)
-        
-        # try soft label
-        # logits_ = []
-        # for label_id in range(len(self.label_word_list)):
-        #     logits_.append(prediction_mask_scores[:, self.label_word_list[label_id]].unsqueeze(-1))
-        # for label_id in range(len(self.negative_ids)):
-        #     logits_.append(prediction_mask_scores[:, self.negative_ids[label_id]].unsqueeze(-1))
-        # for label_id in range(len(self.positive_ids)):
-        #     logits_.append(prediction_mask_scores[:, self.positive_ids[label_id]].unsqueeze(-1))
-        # logits_ = torch.cat(logits_, -1)
-        
-        # labels_ = []
-        # for label in labels.tolist():
-        #     if label == 0:
-        #         labels_.append([1.0 ,0 ,0.9 ,0.9 ,0.9 ,0 ,0 ,0 ,0 ,0 ])
-        #         # labels_.append([1.0 ,0 ,0,0,0,0,0,0,0,0 ])
-        #     else:
-        #         labels_.append([0 , 1.0 , 0 , 0 , 0 , 0.9 , 0.9 , 0.9 , 0.9 , 0.9 ])
-        #         # labels_.append([0 ,1.0,0 ,0,0,0,0,0,0,0 ])
-                
-        # labels_ = torch.as_tensor(labels_).to(labels.device)
                 
 
         # Regression task
@@ -258,15 +213,32 @@ class RobertaForPromptTuning(BertPreTrainedModel):
             else:
                 loss_fct = nn.CrossEntropyLoss()
                 loss = loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
-                
-                # loss_fct = nn.BCEWithLogitsLoss()
-                # loss2 = loss_fct(logits_, labels_)
-                
-                # try soft label
-                # loss_fct = nn.BCELoss()
-                # loss = loss_fct(torch.nn.functional.softmax(logits_),labels_.float())
 
         output = (logits,)
+        
+        # contrastive learning
+        z1 = pooled_output
+        
+        # m = nn.Dropout(p=0.1)
+
+        # Encode everything
+        outputs2 = self.roberta(
+            attention_mask=attention_mask,
+            inputs_embeds = inputs_embeds,
+        )
+        _, z2 = outputs2[:2]
+        
+        temp = 0.05
+        cos_fun = nn.CosineSimilarity(dim=-1)
+        cos_sim = cos_fun(z1.unsqueeze(1), z2.unsqueeze(0)) / temp
+        labels_sim = torch.arange(cos_sim.size(0)).long().to(cos_sim.device)
+        
+        loss_fct = nn.CrossEntropyLoss()
+        loss += self.contrative_ratio*loss_fct(cos_sim, labels_sim)
+        
+        
+        
+        
         if self.num_labels == 1:
             # Regression output
             output = (torch.exp(logits[..., 1].unsqueeze(-1)) * (self.ub - self.lb) + self.lb,)

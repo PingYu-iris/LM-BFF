@@ -102,7 +102,8 @@ esac
 # For medium-sized GPUs (e.g., 2080ti with 10GB memory), they can only take 
 # a maximum batch size of 2 when using large-size models. So we use gradient
 # accumulation steps to achieve the same effect of larger batch sizes.
-REAL_BS=2
+REAL_BS=16
+# REAL_BS=2
 GS=$(expr $BS / $REAL_BS)
 
 # Use a random number to distinguish different trails (avoid accidental overwriting)
@@ -135,7 +136,8 @@ python run.py \
   --template $TEMPLATE \
   --mapping $MAPPING \
   --soft_prompt_tokens $SOFT_PROMPT_NUM \
-  --save_at_last
+  --save_at_last \
+  --contrative_ratio $CONTRASTIVE \
   $TASK_EXTRA \
   $1 > output.txt
 

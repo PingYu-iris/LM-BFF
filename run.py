@@ -28,8 +28,15 @@ from tqdm import tqdm
 import json
 
 '''our implementations'''
-from src.models_prompt import RobertaForPromptTuning
+# from src.models_prompt import RobertaForPromptTuning
+''' soft label '''
+# from src.model_prompt_soft_label import RobertaForPromptTuning
+
+from src.models_prompt_contrastive import RobertaForPromptTuning
+# from src.models_prompt_old import RobertaForPromptTuning
 from src.models_prefix_tuning import RobertaForPrefixTuning
+
+
 
 
 logger = logging.getLogger(__name__)
@@ -220,6 +227,11 @@ class DynamicDataTrainingArguments(DataTrainingArguments):
     template_list: list = field(
         default=None,
         metadata={"help": "(DO NOT List of templates (only initialized after the program starts."}
+    )
+    
+    contrative_ratio: float = field(
+        default=0.5,
+        metadata={"help": "for contrative ratio"}
     )
 
 
@@ -466,6 +478,40 @@ def main():
         cache_dir=model_args.cache_dir,
     )
 
+    # # calculate word similarity
+
+    # from nltk.corpus import wordnet
+    # from nltk.corpus import wordnet as wn
+
+    # # label_1 = wn.synsets('great',pos=wn.ADJ)
+    # # label_0 = wn.synsets('terrible',pos=wn.ADJ)
+
+    # # test = wn.synsets('perfect',pos=wn.ADJ)
+
+    # label_1 = wn.synsets('great')
+    # label_0 = wn.synsets('terrible')
+
+    # # test = wn.synsets('terrific')
+    # test = wn.synsets('awesome')
+
+    # final_scores = []
+    # for label_word in label_1:
+    #     scores = []
+    #     for test_word in test:
+    #         # score = label_word.path_similarity(test_word)
+    #         try:
+    #             # score = label_word.lch_similarity(test_word)
+    #             score = label_word.wup_similarity(test_word)
+    #         except:
+    #             score = None
+    #         if score!=None:
+    #             scores.append(score)
+    #     if scores!=[]:	
+    #         final_scores.append(max(scores))
+
+    # print(final_scores)
+    
+
     # Get our special datasets.
     train_dataset = (
         FewShotDataset(data_args, tokenizer=tokenizer, mode="train", use_demo=("demo" in model_args.few_shot_type))
@@ -507,6 +553,10 @@ def main():
     # Pass dataset and argument information to the model
     if data_args.prompt:
         model.label_word_list = torch.tensor(train_dataset.label_word_list).long().cuda()
+        model.positive_ids = torch.tensor(train_dataset.positive_ids).long().cuda()
+        model.negative_ids = torch.tensor(train_dataset.negative_ids).long().cuda()
+        model.contrative_ratio = data_args.contrative_ratio
+        
     if output_modes_mapping[data_args.task_name] == 'regression':
         # lower / upper bounds
         model.lb, model.ub = bound_mapping[data_args.task_name]
@@ -541,6 +591,20 @@ def main():
             return compute_metrics_mapping[task_name](task_name, preds, label_ids)
 
         return compute_metrics_fn
+    
+    from prettytable import PrettyTable
+    def count_parameters(model):
+        table = PrettyTable(["Modules", "Parameters"])
+        total_params = 0
+        for name, parameter in model.named_parameters():
+            if not parameter.requires_grad: 
+                continue
+            param = parameter.numel()
+            table.add_row([name, param])
+            total_params+=param
+        print(table)
+        print(f"Total Trainable Params: {total_params}")
+        return total_params
     
     # check trainable parameters
     logger.info("*** Check Param ***")
@@ -688,6 +752,7 @@ def main():
                     logger.info("***** training samples {} *****".format(data_args.num_k))
                     logger.info("***** soft prompt tokens {} *****".format(data_args.soft_prompt_tokens))
                     logger.info("***** training seed {} *****".format(training_args.seed))
+                    logger.info("***** contrative ratio {} *****".format(data_args.contrative_ratio))
                     
                     for key, value in test_result.items():
                         logger.info("  %s = %s", key, value)

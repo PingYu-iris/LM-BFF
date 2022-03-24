@@ -12,34 +12,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-
-from prettytable import PrettyTable
-def count_train_parameters(model):
-    table = PrettyTable(["Modules", "Parameters"])
-    total_params = 0
-    for name, parameter in model.named_parameters():
-        if not parameter.requires_grad: 
-            continue
-        param = parameter.numel()
-        table.add_row([name, param])
-        total_params+=param
-    print(table)
-    print(f"Total Trainable Params: {total_params}")
-    return total_params
-
-def count_parameters(model):
-    table = PrettyTable(["Modules", "Parameters"])
-    total_params = 0
-    for name, parameter in model.named_parameters():
-        # if not parameter.requires_grad: 
-        #     continue
-        param = parameter.numel()
-        table.add_row([name, param])
-        total_params+=param
-    print(table)
-    print(f"Total Params: {total_params}")
-    return total_params
-
 class RobertaForPromptTuning(BertPreTrainedModel):
 
     def __init__(self, config, soft_prompt_path: str = None,
@@ -57,10 +29,6 @@ class RobertaForPromptTuning(BertPreTrainedModel):
 
         for params in self.roberta.parameters():
             params.requires_grad = False
-        # for params in self.classifier.parameters():
-        #     params.requires_grad = False
-        # for params in self.lm_head.parameters():
-        #     params.requires_grad = False
         
         self.n_tokens = n_tokens
         self.initialize_from_vocab=initialize_from_vocab
@@ -80,6 +48,7 @@ class RobertaForPromptTuning(BertPreTrainedModel):
         self.label_word_list = None
         self.positive_ids = None
         self.negative_ids = None
+        self.contrative_ratio = None
     
     # @classmethod
     # def from_pretrained(cls, pretrained_model_name_or_path, soft_prompt_path: str = None,
@@ -220,28 +189,6 @@ class RobertaForPromptTuning(BertPreTrainedModel):
         for label_id in range(len(self.label_word_list)):
             logits.append(prediction_mask_scores[:, self.label_word_list[label_id]].unsqueeze(-1))
         logits = torch.cat(logits, -1)
-        
-        # try soft label
-        # logits_ = []
-        # for label_id in range(len(self.label_word_list)):
-        #     logits_.append(prediction_mask_scores[:, self.label_word_list[label_id]].unsqueeze(-1))
-        # for label_id in range(len(self.negative_ids)):
-        #     logits_.append(prediction_mask_scores[:, self.negative_ids[label_id]].unsqueeze(-1))
-        # for label_id in range(len(self.positive_ids)):
-        #     logits_.append(prediction_mask_scores[:, self.positive_ids[label_id]].unsqueeze(-1))
-        # logits_ = torch.cat(logits_, -1)
-        
-        # labels_ = []
-        # for label in labels.tolist():
-        #     if label == 0:
-        #         labels_.append([1.0 ,0 ,0.9 ,0.9 ,0.9 ,0 ,0 ,0 ,0 ,0 ])
-        #         # labels_.append([1.0 ,0 ,0,0,0,0,0,0,0,0 ])
-        #     else:
-        #         labels_.append([0 , 1.0 , 0 , 0 , 0 , 0.9 , 0.9 , 0.9 , 0.9 , 0.9 ])
-        #         # labels_.append([0 ,1.0,0 ,0,0,0,0,0,0,0 ])
-                
-        # labels_ = torch.as_tensor(labels_).to(labels.device)
-                
 
         # Regression task
         if self.config.num_labels == 1:
@@ -258,13 +205,6 @@ class RobertaForPromptTuning(BertPreTrainedModel):
             else:
                 loss_fct = nn.CrossEntropyLoss()
                 loss = loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
-                
-                # loss_fct = nn.BCEWithLogitsLoss()
-                # loss2 = loss_fct(logits_, labels_)
-                
-                # try soft label
-                # loss_fct = nn.BCELoss()
-                # loss = loss_fct(torch.nn.functional.softmax(logits_),labels_.float())
 
         output = (logits,)
         if self.num_labels == 1:

@@ -222,25 +222,25 @@ class RobertaForPromptTuning(BertPreTrainedModel):
         logits = torch.cat(logits, -1)
         
         # try soft label
-        # logits_ = []
-        # for label_id in range(len(self.label_word_list)):
-        #     logits_.append(prediction_mask_scores[:, self.label_word_list[label_id]].unsqueeze(-1))
-        # for label_id in range(len(self.negative_ids)):
-        #     logits_.append(prediction_mask_scores[:, self.negative_ids[label_id]].unsqueeze(-1))
-        # for label_id in range(len(self.positive_ids)):
-        #     logits_.append(prediction_mask_scores[:, self.positive_ids[label_id]].unsqueeze(-1))
-        # logits_ = torch.cat(logits_, -1)
+        logits_ = []
+        for label_id in range(len(self.label_word_list)):
+            logits_.append(prediction_mask_scores[:, self.label_word_list[label_id]].unsqueeze(-1))
+        for label_id in range(len(self.negative_ids)):
+            logits_.append(prediction_mask_scores[:, self.negative_ids[label_id]].unsqueeze(-1))
+        for label_id in range(len(self.positive_ids)):
+            logits_.append(prediction_mask_scores[:, self.positive_ids[label_id]].unsqueeze(-1))
+        logits_ = torch.cat(logits_, -1)
         
-        # labels_ = []
-        # for label in labels.tolist():
-        #     if label == 0:
-        #         labels_.append([1.0 ,0 ,0.9 ,0.9 ,0.9 ,0 ,0 ,0 ,0 ,0 ])
-        #         # labels_.append([1.0 ,0 ,0,0,0,0,0,0,0,0 ])
-        #     else:
-        #         labels_.append([0 , 1.0 , 0 , 0 , 0 , 0.9 , 0.9 , 0.9 , 0.9 , 0.9 ])
-        #         # labels_.append([0 ,1.0,0 ,0,0,0,0,0,0,0 ])
+        labels_ = []
+        for label in labels.tolist():
+            if label == 0:
+                labels_.append([1.0 ,0 ,0.9 ,0.9 ,0.9 ,0 ,0 ,0 ,0 ,0 ])
+                # labels_.append([1.0 ,0 ,0,0,0,0,0,0,0,0 ])
+            else:
+                labels_.append([0 , 1.0 , 0 , 0 , 0 , 0.9 , 0.9 , 0.9 , 0.9 , 0.9 ])
+                # labels_.append([0 ,1.0,0 ,0,0,0,0,0,0,0 ])
                 
-        # labels_ = torch.as_tensor(labels_).to(labels.device)
+        labels_ = torch.as_tensor(labels_).to(labels.device)
                 
 
         # Regression task
@@ -256,15 +256,15 @@ class RobertaForPromptTuning(BertPreTrainedModel):
                 labels = torch.stack([1 - (labels.view(-1) - self.lb) / (self.ub - self.lb), (labels.view(-1) - self.lb) / (self.ub - self.lb)], -1)
                 loss = loss_fct(logits.view(-1, 2), labels)
             else:
-                loss_fct = nn.CrossEntropyLoss()
-                loss = loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
+                # loss_fct = nn.CrossEntropyLoss()
+                # loss = loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
                 
                 # loss_fct = nn.BCEWithLogitsLoss()
                 # loss2 = loss_fct(logits_, labels_)
                 
                 # try soft label
-                # loss_fct = nn.BCELoss()
-                # loss = loss_fct(torch.nn.functional.softmax(logits_),labels_.float())
+                loss_fct = nn.BCELoss()
+                loss = loss_fct(torch.nn.functional.softmax(logits_),labels_.float())
 
         output = (logits,)
         if self.num_labels == 1:

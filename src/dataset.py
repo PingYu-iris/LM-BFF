@@ -470,6 +470,22 @@ class FewShotDataset(torch.utils.data.Dataset):
                 _ += 1
         else:
             self.features = None
+        
+        positive_words = ["admirable","awesome","best","exceptional","fantastic","fine","good","marvelous","perfect","positive","terrific","tremendous","wonderful"]
+        negative_words = ["abhorrent","appalling","atrocious","awful","dangerous","dire","bad","disastrous","disturbing","dreadful","frightful","ghastly","gruesome",
+                          "harrowing","hideous","horrid","horrifying","serious","severe","shocking","unfortunate","unpleasant"]
+        self.positive_ids = []
+        for positive in positive_words:
+            ids = tokenizer._convert_token_to_id(positive)
+            if ids != 3:
+                self.positive_ids.append(ids)
+        
+        self.negative_ids = []
+        for negative in negative_words:
+            ids = tokenizer._convert_token_to_id(negative)
+            if ids != 3:
+                self.negative_ids.append(ids)
+        
 
     def select_context(self, context_examples):
         """
