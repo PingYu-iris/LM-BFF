@@ -137,7 +137,6 @@ python run.py \
   --mapping $MAPPING \
   --soft_prompt_tokens $SOFT_PROMPT_NUM \
   --save_at_last \
-  --contrative_ratio $CONTRASTIVE \
   $TASK_EXTRA \
   $1 > output.txt
 

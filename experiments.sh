@@ -3,23 +3,22 @@
 # lr in 1e-5 2e-5 5e-5
 # task in SST-2 sst-5 mr cr mpqa trec SNLI QNLI QQP 
 # model_type in prompt-tuning prompt prefix-tuning finetune
-
-for seed in 100
-do
-    for bs in 32
+for task in mpqa trec SNLI QNLI QQP
+do 
+    for seed in 13 21 42 87 100
     do
-        for lr in 2e-5
+        for bs in 32
         do
-            for k in 16
+            for lr in 2e-5
             do
-                for soft_prompt_tokens in 25
+                for k in 1
                 do
-                    for model_type in prompt-tuning
+                    for soft_prompt_tokens in 25
                     do
-                        for max_step in 5000
+                        for model_type in prompt-tuning
                         do
-                            for task in SST-2
-                            do 
+                            for max_step in 500
+                            do
                                 TAG=exp \
                                 TYPE=$model_type \
                                 TASK=$task \

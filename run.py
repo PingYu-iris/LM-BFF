@@ -1,8 +1,12 @@
 """Finetuning the library models for sequence classification on GLUE."""
 
+import os
+# os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2"
+
+
 import dataclasses
 import logging
-import os
 import sys
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Optional
@@ -32,7 +36,8 @@ import json
 ''' soft label '''
 # from src.model_prompt_soft_label import RobertaForPromptTuning
 
-from src.models_prompt_contrastive import RobertaForPromptTuning
+# from src.models_prompt_contrastive import RobertaForPromptTuning
+from src.models_prompt_compactor import RobertaForPromptTuning
 # from src.models_prompt_old import RobertaForPromptTuning
 from src.models_prefix_tuning import RobertaForPrefixTuning
 
@@ -229,10 +234,6 @@ class DynamicDataTrainingArguments(DataTrainingArguments):
         metadata={"help": "(DO NOT List of templates (only initialized after the program starts."}
     )
     
-    contrative_ratio: float = field(
-        default=0.5,
-        metadata={"help": "for contrative ratio"}
-    )
 
 
 @dataclass
@@ -537,6 +538,7 @@ def main():
             cache_dir=model_args.cache_dir,
             n_tokens=data_args.soft_prompt_tokens
         )
+
     else:
         model = model_fn.from_pretrained(
             model_args.model_name_or_path,
@@ -555,7 +557,6 @@ def main():
         model.label_word_list = torch.tensor(train_dataset.label_word_list).long().cuda()
         model.positive_ids = torch.tensor(train_dataset.positive_ids).long().cuda()
         model.negative_ids = torch.tensor(train_dataset.negative_ids).long().cuda()
-        model.contrative_ratio = data_args.contrative_ratio
         
     if output_modes_mapping[data_args.task_name] == 'regression':
         # lower / upper bounds
@@ -752,7 +753,7 @@ def main():
                     logger.info("***** training samples {} *****".format(data_args.num_k))
                     logger.info("***** soft prompt tokens {} *****".format(data_args.soft_prompt_tokens))
                     logger.info("***** training seed {} *****".format(training_args.seed))
-                    logger.info("***** contrative ratio {} *****".format(data_args.contrative_ratio))
+                    # logger.info("***** contrative ratio {} *****".format(data_args.contrative_ratio))
                     
                     for key, value in test_result.items():
                         logger.info("  %s = %s", key, value)
