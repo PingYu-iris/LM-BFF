@@ -56,7 +56,9 @@ Our code is built on [transformers](https://github.com/huggingface/transformers)
 
 Before running any experiments, create the result folder by `mkdir result` to save checkpoints. Then you can run our code with the following bash file.
 
-```bash experiments.sh```
+```bash 
+bash experiments.sh
+```
 
 The arguments in the bash file contains:
 * `task`: list all the experiment tasks;
